@@ -4,5 +4,4 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-uefi = { version = "0.29", features = ["alloc"] }
-uefi-services = "0.26"
+uefi = { version = "0.29", features = ["alloc", "global_allocator"] }
