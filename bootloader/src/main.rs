@@ -4,9 +4,11 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
+
 use uefi::prelude::*;
 use uefi::fs::FileSystem;
 use uefi::CString16;
+use uefi::table::boot::{MemoryDescriptor, MemoryType};
 
 mod elf_loader;
 
@@ -15,38 +17,79 @@ fn efi_main(
     image: Handle,
     mut system_table: SystemTable<Boot>,
 ) -> Status {
-    // Initialize UEFI helpers and the global allocator.
     if uefi::helpers::init(&mut system_table).is_err() {
         return Status::ABORTED;
     }
 
-    // uefi 0.29 uses the BootServices API through SystemTable.
-    let boot_services = system_table.boot_services();
+    let loaded = {
+        let boot_services = system_table.boot_services();
 
-    let fs_protocol = match boot_services.get_image_file_system(image) {
-        Ok(protocol) => protocol,
-        Err(_) => return Status::NOT_FOUND,
+        let fs_protocol = match boot_services.get_image_file_system(image) {
+            Ok(protocol) => protocol,
+            Err(_) => return Status::NOT_FOUND,
+        };
+
+        let mut fs = FileSystem::new(fs_protocol);
+
+        let kernel_path = match CString16::try_from("\\kernel.elf") {
+            Ok(path) => path,
+            Err(_) => return Status::INVALID_PARAMETER,
+        };
+
+        let kernel_elf: Vec<u8> =
+            match fs.read(kernel_path.as_ref()) {
+                Ok(data) => data,
+                Err(_) => return Status::NOT_FOUND,
+            };
+
+        if kernel_elf.is_empty() {
+            return Status::LOAD_ERROR;
+        }
+
+        let memory_map =
+            match boot_services.memory_map(MemoryType::CONVENTIONAL) {
+                Ok(map) => map,
+                Err(_) => return Status::ABORTED,
+            };
+
+        let descriptors: Vec<MemoryDescriptor> =
+            memory_map.entries().copied().collect();
+
+        unsafe {
+            match elf_loader::parse_and_load_kernel(
+                &kernel_elf,
+                &descriptors,
+                boot_services,
+            ) {
+                Ok(info) => info,
+                Err(_) => return Status::LOAD_ERROR,
+            }
+        }
     };
 
-    let mut fs = FileSystem::new(fs_protocol);
+    let (_runtime_system_table, _final_memory_map) =
+        unsafe {
+            system_table
+                .exit_boot_services(MemoryType::LOADER_DATA)
+        };
 
-    let kernel_path = match CString16::try_from("\\kernel.elf") {
-        Ok(path) => path,
-        Err(_) => return Status::INVALID_PARAMETER,
-    };
+    // ------------------------------------------------------------
+    // 5. Jump to the loaded kernel
+    // ------------------------------------------------------------
 
-    let kernel_elf: Vec<u8> = match fs.read(kernel_path.as_ref()) {
-        Ok(data) => data,
-        Err(_) => return Status::NOT_FOUND,
-    };
+    let entry = loaded.entry_point_virt;
 
-    // Checkpoint: kernel.elf was successfully read.
-    let _kernel_size = kernel_elf.len();
+    let kernel_entry: extern "C" fn() -> ! =
+        unsafe {
+            core::mem::transmute(entry)
+        };
 
-    Status::SUCCESS
+    kernel_entry();
 }
 
 #[panic_handler]
 fn panic_handler(_info: &core::panic::PanicInfo) -> ! {
-    loop {}
+    loop {
+        core::hint::spin_loop();
+    }
 }

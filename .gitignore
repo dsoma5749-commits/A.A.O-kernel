@@ -1,8 +1,18 @@
-target/
+/target/
+/esp/
+kernel.elf
+*.efi
 *.img
 *.iso
-*.bin
-*.elf
-*.o
-*.a
-.DS_Store
+
+*.bak
+*.stage1.bak
+
+/if
+
+.env
+*.key
+*.secret
+
+# Local AI CLI / secrets
+jarvis_cli.py
