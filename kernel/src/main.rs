@@ -4,8 +4,10 @@
 use core::panic::PanicInfo;
 
 mod arch;
+mod boot_info;
 mod isolation;
 
+use boot_info::BootInfo;
 use isolation::{
     Capability, CapabilityId, CapabilityType, EndpointId, IpcEndpoint, IpcMessage, Ring3Domain,
     ServiceId, UserEntry, UserService,
@@ -28,9 +30,23 @@ pub static mut KERNEL_STACK: KernelStack = KernelStack([0; STACK_SIZE]);
 pub static mut AAO_BSS_TEST: [u8; 4096] = [0; 4096];
 
 #[unsafe(no_mangle)]
-pub extern "C" fn kernel_main() -> ! {
+pub extern "C" fn kernel_main(boot_info: *const BootInfo) -> ! {
+    if boot_info.is_null() {
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    let boot_info = unsafe { &*boot_info };
+
+    let _kernel_start = boot_info.kernel_phys_start;
+    let _kernel_end = boot_info.kernel_phys_end;
+    let _kernel_entry = boot_info.kernel_entry;
+
+    // Hardware and GDT initialization
     arch::x86_64::initialize();
 
+    // Security & Service Isolation
     isolation_bootstrap();
 
     loop {
@@ -81,8 +97,8 @@ fn isolation_bootstrap() {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn _start() -> ! {
-    kernel_main()
+pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
+    kernel_main(boot_info)
 }
 
 #[panic_handler]

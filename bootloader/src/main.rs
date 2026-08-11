@@ -7,10 +7,13 @@ use alloc::vec::Vec;
 
 use uefi::fs::FileSystem;
 use uefi::prelude::*;
-use uefi::table::boot::{MemoryDescriptor, MemoryType};
+use uefi::table::boot::{AllocateType, MemoryDescriptor, MemoryType};
 use uefi::CString16;
 
+mod boot_info;
 mod elf_loader;
+
+use boot_info::BootInfo;
 
 #[entry]
 fn efi_main(image: Handle, mut system_table: SystemTable<Boot>) -> Status {
@@ -57,18 +60,46 @@ fn efi_main(image: Handle, mut system_table: SystemTable<Boot>) -> Status {
         }
     };
 
+    /*
+     * Deterministic Boot:
+     * Currently using 0 for physical_memory_offset (Identity Mapped space).
+     * Kernel will inspect this structure before enabling its own paging isolation.
+     */
+    let physical_memory_offset = 0u64;
+
+    let boot_info_phys = match system_table.boot_services().allocate_pages(
+        AllocateType::AnyPages,
+        MemoryType::LOADER_DATA,
+        1,
+    ) {
+        Ok(address) => address,
+        Err(_) => return Status::OUT_OF_RESOURCES,
+    };
+
+    let boot_info = BootInfo::new(
+        loaded.phys_start,
+        loaded.phys_end,
+        loaded.entry_point_virt,
+        physical_memory_offset,
+    );
+
+    unsafe {
+        let destination = boot_info_phys as *mut BootInfo;
+        destination.write(boot_info);
+    }
+
+    let boot_info_ptr = boot_info_phys as *const BootInfo;
+
     let (_runtime_system_table, _final_memory_map) =
         unsafe { system_table.exit_boot_services(MemoryType::LOADER_DATA) };
 
-    // ------------------------------------------------------------
-    // 5. Jump to the loaded kernel
-    // ------------------------------------------------------------
+    /*
+     * Jump to Kernel in Deterministic Identity-Mapped Mode
+     */
+    let kernel_entry: extern "C" fn(*const BootInfo) -> ! =
+        unsafe { core::mem::transmute(loaded.entry_point_virt) };
 
-    let entry = loaded.entry_point_virt;
-
-    let kernel_entry: extern "C" fn() -> ! = unsafe { core::mem::transmute(entry) };
-
-    kernel_entry();
+    kernel_entry(boot_info_ptr);
 }
 
 #[panic_handler]
