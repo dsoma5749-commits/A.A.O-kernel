@@ -42,6 +42,8 @@ pub extern "C" fn kernel_main(boot_info: *const BootInfo) -> ! {
     let _kernel_start = boot_info.kernel_phys_start;
     let _kernel_end = boot_info.kernel_phys_end;
     let _kernel_entry = boot_info.kernel_entry;
+    let _mmap_phys = boot_info.memory_map_phys;
+    let _mmap_len = boot_info.memory_map_len;
 
     // Hardware and GDT initialization
     arch::x86_64::initialize();
@@ -55,13 +57,6 @@ pub extern "C" fn kernel_main(boot_info: *const BootInfo) -> ! {
 }
 
 fn isolation_bootstrap() {
-    /*
-     * M1:
-     * Kernel owns the capability authority.
-     * User services receive explicit capabilities.
-     * This is the first security boundary.
-     */
-
     let ipc_capability = Capability::new(
         CapabilityId::new(1),
         CapabilityType::IpcEndpoint,
@@ -69,25 +64,18 @@ fn isolation_bootstrap() {
     );
 
     let ipc_token = isolation::capability::IpcCapability::new(ipc_capability);
-
     let endpoint = IpcEndpoint::new(EndpointId::new(1));
 
     let mut message = IpcMessage::empty();
-
     let _ = message.push(0xAA4F);
     let _ = message.push(1);
 
     let _ = endpoint.send(&ipc_token, &message);
 
     let service_capability = isolation::service::service_capability(2);
-
     let mut filesystem = UserService::new(ServiceId::new(1), service_capability);
-
     let _ = filesystem.start();
 
-    /*
-     * Ring-3 domain instantiation test
-     */
     let user_entry = UserEntry::new(0x0040_0000, 0x0080_0000);
 
     let _user_domain = match Ring3Domain::new(user_entry) {

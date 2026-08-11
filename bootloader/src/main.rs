@@ -60,12 +60,38 @@ fn efi_main(image: Handle, mut system_table: SystemTable<Boot>) -> Status {
         }
     };
 
-    /*
-     * Deterministic Boot:
-     * Currently using 0 for physical_memory_offset (Identity Mapped space).
-     * Kernel will inspect this structure before enabling its own paging isolation.
-     */
     let physical_memory_offset = 0u64;
+
+    /*
+     * Allocate Memory for Memory Map descriptors array and BootInfo
+     */
+    let memory_map = match system_table
+        .boot_services()
+        .memory_map(MemoryType::CONVENTIONAL)
+    {
+        Ok(map) => map,
+        Err(_) => return Status::ABORTED,
+    };
+
+    let descriptor_count = memory_map.entries().count();
+    let map_bytes_len = descriptor_count * core::mem::size_of::<MemoryDescriptor>();
+    let map_pages = (map_bytes_len + 4095) / 4096;
+
+    let map_phys_addr = match system_table.boot_services().allocate_pages(
+        AllocateType::AnyPages,
+        MemoryType::LOADER_DATA,
+        map_pages,
+    ) {
+        Ok(address) => address,
+        Err(_) => return Status::OUT_OF_RESOURCES,
+    };
+
+    unsafe {
+        let dest_ptr = map_phys_addr as *mut MemoryDescriptor;
+        for (i, desc) in memory_map.entries().enumerate() {
+            dest_ptr.add(i).write(*desc);
+        }
+    }
 
     let boot_info_phys = match system_table.boot_services().allocate_pages(
         AllocateType::AnyPages,
@@ -81,6 +107,8 @@ fn efi_main(image: Handle, mut system_table: SystemTable<Boot>) -> Status {
         loaded.phys_end,
         loaded.entry_point_virt,
         physical_memory_offset,
+        map_phys_addr,
+        descriptor_count as u64,
     );
 
     unsafe {
@@ -93,9 +121,6 @@ fn efi_main(image: Handle, mut system_table: SystemTable<Boot>) -> Status {
     let (_runtime_system_table, _final_memory_map) =
         unsafe { system_table.exit_boot_services(MemoryType::LOADER_DATA) };
 
-    /*
-     * Jump to Kernel in Deterministic Identity-Mapped Mode
-     */
     let kernel_entry: extern "C" fn(*const BootInfo) -> ! =
         unsafe { core::mem::transmute(loaded.entry_point_virt) };
 

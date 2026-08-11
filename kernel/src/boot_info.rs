@@ -3,19 +3,12 @@
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct BootInfo {
-    /// Physical address where the kernel image begins.
     pub kernel_phys_start: u64,
-
-    /// Physical address immediately after the kernel image.
     pub kernel_phys_end: u64,
-
-    /// Kernel entry virtual address.
     pub kernel_entry: u64,
-
-    /// Physical-memory mapping offset.
-    ///
-    /// This is the virtual address corresponding to physical address 0.
     pub physical_memory_offset: u64,
+    pub memory_map_phys: u64,
+    pub memory_map_len: u64,
 }
 
 impl BootInfo {
@@ -24,12 +17,16 @@ impl BootInfo {
         kernel_phys_end: u64,
         kernel_entry: u64,
         physical_memory_offset: u64,
+        memory_map_phys: u64,
+        memory_map_len: u64,
     ) -> Self {
         Self {
             kernel_phys_start,
             kernel_phys_end,
             kernel_entry,
             physical_memory_offset,
+            memory_map_phys,
+            memory_map_len,
         }
     }
 }
