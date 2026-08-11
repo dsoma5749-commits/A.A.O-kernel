@@ -30,3 +30,8 @@ impl BootInfo {
         }
     }
 }
+
+const _: () = {
+    assert!(core::mem::size_of::<BootInfo>() == 48);
+    assert!(core::mem::align_of::<BootInfo>() == 8);
+};
