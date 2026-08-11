@@ -5,18 +5,15 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
-use uefi::prelude::*;
 use uefi::fs::FileSystem;
-use uefi::CString16;
+use uefi::prelude::*;
 use uefi::table::boot::{MemoryDescriptor, MemoryType};
+use uefi::CString16;
 
 mod elf_loader;
 
 #[entry]
-fn efi_main(
-    image: Handle,
-    mut system_table: SystemTable<Boot>,
-) -> Status {
+fn efi_main(image: Handle, mut system_table: SystemTable<Boot>) -> Status {
     if uefi::helpers::init(&mut system_table).is_err() {
         return Status::ABORTED;
     }
@@ -36,31 +33,24 @@ fn efi_main(
             Err(_) => return Status::INVALID_PARAMETER,
         };
 
-        let kernel_elf: Vec<u8> =
-            match fs.read(kernel_path.as_ref()) {
-                Ok(data) => data,
-                Err(_) => return Status::NOT_FOUND,
-            };
+        let kernel_elf: Vec<u8> = match fs.read(kernel_path.as_ref()) {
+            Ok(data) => data,
+            Err(_) => return Status::NOT_FOUND,
+        };
 
         if kernel_elf.is_empty() {
             return Status::LOAD_ERROR;
         }
 
-        let memory_map =
-            match boot_services.memory_map(MemoryType::CONVENTIONAL) {
-                Ok(map) => map,
-                Err(_) => return Status::ABORTED,
-            };
+        let memory_map = match boot_services.memory_map(MemoryType::CONVENTIONAL) {
+            Ok(map) => map,
+            Err(_) => return Status::ABORTED,
+        };
 
-        let descriptors: Vec<MemoryDescriptor> =
-            memory_map.entries().copied().collect();
+        let descriptors: Vec<MemoryDescriptor> = memory_map.entries().copied().collect();
 
         unsafe {
-            match elf_loader::parse_and_load_kernel(
-                &kernel_elf,
-                &descriptors,
-                boot_services,
-            ) {
+            match elf_loader::parse_and_load_kernel(&kernel_elf, &descriptors, boot_services) {
                 Ok(info) => info,
                 Err(_) => return Status::LOAD_ERROR,
             }
@@ -68,10 +58,7 @@ fn efi_main(
     };
 
     let (_runtime_system_table, _final_memory_map) =
-        unsafe {
-            system_table
-                .exit_boot_services(MemoryType::LOADER_DATA)
-        };
+        unsafe { system_table.exit_boot_services(MemoryType::LOADER_DATA) };
 
     // ------------------------------------------------------------
     // 5. Jump to the loaded kernel
@@ -79,10 +66,7 @@ fn efi_main(
 
     let entry = loaded.entry_point_virt;
 
-    let kernel_entry: extern "C" fn() -> ! =
-        unsafe {
-            core::mem::transmute(entry)
-        };
+    let kernel_entry: extern "C" fn() -> ! = unsafe { core::mem::transmute(entry) };
 
     kernel_entry();
 }

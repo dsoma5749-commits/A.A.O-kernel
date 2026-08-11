@@ -1,12 +1,7 @@
 use core::mem::size_of;
 use core::ptr::{copy_nonoverlapping, read_unaligned, write_bytes};
 
-use uefi::table::boot::{
-    AllocateType,
-    BootServices,
-    MemoryDescriptor,
-    MemoryType,
-};
+use uefi::table::boot::{AllocateType, BootServices, MemoryDescriptor, MemoryType};
 
 pub const PT_LOAD: u32 = 1;
 
@@ -61,8 +56,7 @@ pub unsafe fn parse_and_load_kernel(
         return Err("ELF_FILE_TOO_SMALL");
     }
 
-    let header =
-        read_unaligned(elf_bytes.as_ptr() as *const Elf64Header);
+    let header = read_unaligned(elf_bytes.as_ptr() as *const Elf64Header);
 
     if header.e_ident[0] != 0x7F
         || header.e_ident[1] != b'E'
@@ -96,8 +90,7 @@ pub unsafe fn parse_and_load_kernel(
         return Err("INVALID_PROGRAM_HEADER_SIZE");
     }
 
-    let phdr_offset = usize::try_from(header.e_phoff)
-        .map_err(|_| "PHDR_OFFSET_OVERFLOW")?;
+    let phdr_offset = usize::try_from(header.e_phoff).map_err(|_| "PHDR_OFFSET_OVERFLOW")?;
 
     let phdr_size = usize::from(header.e_phentsize);
     let phdr_count = usize::from(header.e_phnum);
@@ -131,8 +124,7 @@ pub unsafe fn parse_and_load_kernel(
             .and_then(|v| phdr_offset.checked_add(v))
             .ok_or("PHDR_OFFSET_OVERFLOW")?;
 
-        let phdr =
-            read_unaligned(elf_bytes.as_ptr().add(offset) as *const Elf64Phdr);
+        let phdr = read_unaligned(elf_bytes.as_ptr().add(offset) as *const Elf64Phdr);
 
         if phdr.p_type != PT_LOAD {
             continue;
@@ -152,9 +144,7 @@ pub unsafe fn parse_and_load_kernel(
             return Err("INVALID_SEGMENT_ALIGNMENT");
         }
 
-        if phdr.p_align > 1
-            && phdr.p_vaddr % phdr.p_align != phdr.p_offset % phdr.p_align
-        {
+        if phdr.p_align > 1 && phdr.p_vaddr % phdr.p_align != phdr.p_offset % phdr.p_align {
             return Err("SEGMENT_ALIGNMENT_MISMATCH");
         }
 
@@ -193,11 +183,7 @@ pub unsafe fn parse_and_load_kernel(
             max_phys = mem_end;
         }
 
-        if !is_region_available_in_uefi(
-            phdr.p_paddr,
-            phdr.p_memsz,
-            memory_map,
-        ) {
+        if !is_region_available_in_uefi(phdr.p_paddr, phdr.p_memsz, memory_map) {
             return Err("TARGET_PHYSICAL_MEMORY_NOT_CONVENTIONAL");
         }
     }
@@ -230,9 +216,7 @@ pub unsafe fn parse_and_load_kernel(
         .checked_sub(alloc_start)
         .ok_or("ALLOCATION_RANGE_OVERFLOW")?;
 
-    let page_count =
-        usize::try_from(alloc_size / PAGE_SIZE)
-            .map_err(|_| "PAGE_COUNT_OVERFLOW")?;
+    let page_count = usize::try_from(alloc_size / PAGE_SIZE).map_err(|_| "PAGE_COUNT_OVERFLOW")?;
 
     boot_services
         .allocate_pages(
@@ -252,8 +236,7 @@ pub unsafe fn parse_and_load_kernel(
             .and_then(|v| phdr_offset.checked_add(v))
             .ok_or("PHDR_OFFSET_OVERFLOW")?;
 
-        let phdr =
-            read_unaligned(elf_bytes.as_ptr().add(offset) as *const Elf64Phdr);
+        let phdr = read_unaligned(elf_bytes.as_ptr().add(offset) as *const Elf64Phdr);
 
         if phdr.p_type != PT_LOAD || phdr.p_memsz == 0 {
             continue;
@@ -262,14 +245,9 @@ pub unsafe fn parse_and_load_kernel(
         let destination = phdr.p_paddr as *mut u8;
 
         if phdr.p_filesz != 0 {
-            let source =
-                elf_bytes.as_ptr().add(phdr.p_offset as usize);
+            let source = elf_bytes.as_ptr().add(phdr.p_offset as usize);
 
-            copy_nonoverlapping(
-                source,
-                destination,
-                phdr.p_filesz as usize,
-            );
+            copy_nonoverlapping(source, destination, phdr.p_filesz as usize);
         }
 
         let bss_size = phdr.p_memsz - phdr.p_filesz;
@@ -290,11 +268,7 @@ pub unsafe fn parse_and_load_kernel(
     })
 }
 
-fn is_region_available_in_uefi(
-    start: u64,
-    size: u64,
-    memory_map: &[MemoryDescriptor],
-) -> bool {
+fn is_region_available_in_uefi(start: u64, size: u64, memory_map: &[MemoryDescriptor]) -> bool {
     let end = match start.checked_add(size) {
         Some(value) => value,
         None => return false,
@@ -310,11 +284,10 @@ fn is_region_available_in_uefi(
             None => continue,
         };
 
-        let region_end =
-            match descriptor.phys_start.checked_add(region_size) {
-                Some(value) => value,
-                None => continue,
-            };
+        let region_end = match descriptor.phys_start.checked_add(region_size) {
+            Some(value) => value,
+            None => continue,
+        };
 
         if start >= descriptor.phys_start && end <= region_end {
             return true;
