@@ -1,103 +1,58 @@
-#![allow(dead_code)]
+use super::capability::Capability;
 
-use super::capability::{
-    Capability, CapabilityId, CapabilityType, ServiceCapability, ServiceResource,
-};
-
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u8)]
-pub enum ServiceState {
-    Created = 0,
-    Running = 1,
-    Stopped = 2,
-    Crashed = 3,
+pub struct ServiceId(pub u64);
+
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ServiceStatus {
+    Stopped,
+    Running,
+    Crashed,
+    Restarting,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct ServiceId(u64);
-
-impl ServiceId {
-    pub const fn new(id: u64) -> Self {
-        Self(id)
-    }
-
-    pub const fn raw(self) -> u64 {
-        self.0
-    }
-}
-
+#[allow(dead_code)]
 pub struct UserService {
-    id: ServiceId,
-    state: ServiceState,
-    capability: ServiceCapability,
+    pub id: ServiceId,
+    pub status: ServiceStatus,
+    pub cap: Capability,
+    pub restart_count: u32,
 }
 
+#[allow(dead_code)]
 impl UserService {
-    pub const fn new(id: ServiceId, capability: ServiceCapability) -> Self {
+    pub fn new(id: ServiceId, cap: Capability) -> Self {
         Self {
             id,
-            state: ServiceState::Created,
-            capability,
+            status: ServiceStatus::Stopped,
+            cap,
+            restart_count: 0,
         }
     }
 
-    pub fn start(&mut self) -> Result<(), ServiceError> {
-        match self.state {
-            ServiceState::Created | ServiceState::Stopped => {
-                self.state = ServiceState::Running;
-                Ok(())
-            }
-
-            ServiceState::Running => Err(ServiceError::AlreadyRunning),
-
-            ServiceState::Crashed => Err(ServiceError::Crashed),
-        }
-    }
-
-    pub fn stop(&mut self) {
-        self.state = ServiceState::Stopped;
-    }
-
-    pub fn mark_crashed(&mut self) {
-        self.state = ServiceState::Crashed;
-    }
-
-    pub fn restart(&mut self) -> Result<(), ServiceError> {
-        if self.state != ServiceState::Crashed {
-            return Err(ServiceError::NotCrashed);
-        }
-
-        self.state = ServiceState::Running;
+    pub fn start(&mut self) -> Result<(), &'static str> {
+        self.status = ServiceStatus::Running;
         Ok(())
     }
 
-    pub const fn id(&self) -> ServiceId {
-        self.id
-    }
+    /// Self-Healing Handler: Auto-reboot crashed user-space services
+    pub fn handle_fault(&mut self) -> Result<(), &'static str> {
+        self.status = ServiceStatus::Crashed;
+        self.restart_count += 1;
 
-    pub const fn state(&self) -> ServiceState {
-        self.state
-    }
-
-    pub const fn capability(&self) -> &ServiceCapability {
-        &self.capability
+        // Instant microkernel restart trigger
+        self.status = ServiceStatus::Restarting;
+        self.start()
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ServiceError {
-    AlreadyRunning,
-    Crashed,
-    NotCrashed,
-}
-
-pub const fn service_capability(id: u64) -> ServiceCapability {
-    let capability = Capability::new(
-        CapabilityId::new(id),
-        CapabilityType::Service,
-        Capability::READ | Capability::WRITE,
-    );
-
-    super::capability::CapabilityToken::<ServiceResource>::new(capability)
+#[allow(dead_code)]
+pub fn service_capability(id: u64) -> Capability {
+    Capability::new(
+        super::capability::CapabilityId(id),
+        super::capability::CapabilityType::IpcEndpoint,
+        Capability::READ | Capability::WRITE | Capability::EXECUTE,
+    )
 }

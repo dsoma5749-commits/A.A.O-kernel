@@ -1,36 +1,14 @@
-#![allow(dead_code)]
-
+pub mod apic;
+pub mod context;
 pub mod gdt;
+pub mod idt;
 pub mod paging;
-
-use x86_64::VirtAddr;
-
-#[derive(Debug)]
-pub struct Architecture {
-    _private: (),
-}
-
-impl Architecture {
-    pub const fn new() -> Self {
-        Self { _private: () }
-    }
-
-    pub fn init(&self) {
-        initialize();
-    }
-}
+pub mod ring3;
+pub mod serial;
 
 pub fn initialize() {
     gdt::init();
+    idt::init();
+    apic::init_apic_timer();
+    serial::init_serial();
 }
-
-/// Initialize access to the currently active page tables.
-///
-/// This does not create a new address space yet.
-pub unsafe fn init_paging(
-    physical_memory_offset: VirtAddr,
-) -> x86_64::structures::paging::OffsetPageTable<'static> {
-    paging::init(physical_memory_offset)
-}
-
-pub use paging::UserAddressSpace;

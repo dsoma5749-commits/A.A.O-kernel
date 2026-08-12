@@ -1,92 +1,50 @@
-#![allow(dead_code)]
-
-use core::marker::PhantomData;
-
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u8)]
+pub struct CapabilityId(pub u64);
+
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CapabilityType {
-    Memory = 1,
-    IpcEndpoint = 2,
-    Service = 3,
-    Device = 4,
+    MemoryRegion,
+    IpcEndpoint,
+    HardwareInterrupt,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct CapabilityId(u64);
-
-impl CapabilityId {
-    pub const fn new(id: u64) -> Self {
-        Self(id)
-    }
-
-    pub const fn raw(self) -> u64 {
-        self.0
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
 pub struct Capability {
-    id: CapabilityId,
-    kind: CapabilityType,
-    rights: u32,
+    pub id: CapabilityId,
+    pub cap_type: CapabilityType,
+    pub permissions: u32,
 }
 
+#[allow(dead_code)]
 impl Capability {
     pub const READ: u32 = 1 << 0;
     pub const WRITE: u32 = 1 << 1;
     pub const EXECUTE: u32 = 1 << 2;
     pub const GRANT: u32 = 1 << 3;
 
-    pub const fn new(id: CapabilityId, kind: CapabilityType, rights: u32) -> Self {
-        Self { id, kind, rights }
-    }
-
-    pub const fn id(self) -> CapabilityId {
-        self.id
-    }
-
-    pub const fn kind(self) -> CapabilityType {
-        self.kind
-    }
-
-    pub const fn rights(self) -> u32 {
-        self.rights
-    }
-
-    pub const fn allows(self, required: u32) -> bool {
-        (self.rights & required) == required
-    }
-}
-
-pub struct CapabilityToken<T> {
-    capability: Capability,
-    _marker: PhantomData<T>,
-}
-
-impl<T> CapabilityToken<T> {
-    pub const fn new(capability: Capability) -> Self {
+    pub fn new(id: CapabilityId, cap_type: CapabilityType, permissions: u32) -> Self {
         Self {
-            capability,
-            _marker: PhantomData,
+            id,
+            cap_type,
+            permissions,
         }
     }
 
-    pub const fn capability(&self) -> Capability {
-        self.capability
-    }
-
-    pub const fn allows(&self, required: u32) -> bool {
-        self.capability.allows(required)
+    pub fn has_permission(&self, perm: u32) -> bool {
+        (self.permissions & perm) == perm
     }
 }
 
-pub enum MemoryResource {}
-pub enum IpcResource {}
-pub enum ServiceResource {}
-pub enum DeviceResource {}
+#[allow(dead_code)]
+pub struct IpcCapability {
+    pub cap: Capability,
+}
 
-pub type MemoryCapability = CapabilityToken<MemoryResource>;
-pub type IpcCapability = CapabilityToken<IpcResource>;
-pub type ServiceCapability = CapabilityToken<ServiceResource>;
-pub type DeviceCapability = CapabilityToken<DeviceResource>;
+#[allow(dead_code)]
+impl IpcCapability {
+    pub fn new(cap: Capability) -> Self {
+        Self { cap }
+    }
+}
